@@ -2,6 +2,7 @@ $LOAD_PATH.unshift File.expand_path("../..", __FILE__)
 require 'json'
 require 'bunny'
 require 'receiver'
+require 'bagit'
 
 describe Receiver do
   before(:all) do
@@ -16,11 +17,11 @@ describe Receiver do
     sender_exchange = sender_channel.direct("test_exchange")
     sender_exchange.publish(@json, :routing_key => "test_key")
     
-    @bag_filename = ""
   end
   
   it "receives a json object that has the link" do
     @receiver.retrieve_msg
+    sleep 3 # wait for it
     location = @receiver.msg_hash['location']
     
     expect(location).not_to eq(nil)
@@ -28,16 +29,19 @@ describe Receiver do
   end
   
   it "downloads the bag" do
-    bag_location = @receiver.download_bag
-    @bag_filename = bag_location
-    expect(File.exists? @bag_filename).to eq(true) 
+    bag = @receiver.download_bag
+    bag_txt_file = bag.bagit_txt_file
+    
+    # make sure the manifest is there
+    expect(File.exists? bag_txt_file).to eq(true)
+     
+    # clean up
+    system "rm -rf #{bag.bag_dir}" 
   end
   
   after(:all) do
     @sender_conn.close
     @receiver.close_queue
-    
-    system "rm -rf #{@bag_filename}" if File.exists? @bag_filename
   end
   
 end

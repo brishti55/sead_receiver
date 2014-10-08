@@ -27,9 +27,14 @@ class Receiver
   end
 
   def retrieve_msg
-    @q.subscribe(:block => false) do |delivery_info, properties, body|
-      @msg_hash = JSON.parse(body)
-    end
+    begin
+      @q.subscribe(:block => false) do |delivery_info, properties, body|
+        @msg_hash = JSON.parse(body)
+      end
+ 
+    rescue Interrupt => _
+      close_queue
+    end 
   end
 
   def download_bag  
@@ -38,52 +43,32 @@ class Receiver
 
 
     #download and save the zip file 
-    FileUtils::mkdir_p "data/#{uuid}"
+    bag_path = "data/#{uuid}"
+    FileUtils::mkdir_p bag_path
   
     open(link){|f|
-      File.open("data/#{uuid}/download.zip", "wb") do |file|
+      File.open("#{bag_path}/download.zip", "wb") do |file|
         file.puts f.read
       end
     }
 
     #unzip the downloaded file
-    
-    Zip::File.open("data/#{uuid}/download.zip") { |zip_file|
+    Zip::File.open("#{bag_path}/download.zip") { |zip_file|
        zip_file.each { |f|
-         f_path=File.join("data/#{uuid}/download", f.name)
+         f_path=File.join("#{bag_path}", f.name)
          FileUtils.mkdir_p(File.dirname(f_path))
          zip_file.extract(f, f_path) unless File.exist?(f_path)
        }
     }
     
-    return "data/#{uuid}/download"
+    # delete the zip file; we don't need it any more
+    File.delete "#{bag_path}/download.zip"
+    
+    # return new bag 
+    BagIt::Bag.new bag_path
     
   end
 
-  def do_work
-    begin
-  
-        #validating an existing bag
-
-        existing_base_path = "data/#{uuid}/download"
-     
-        bag = BagIt::Bag.new existing_base_path
-
-        if bag.valid?
-          puts "#{existing_base_path} is valid"
-        else
-          puts "#{existing_base_path} is not valid"
-        end
-    
-
-    rescue Exception => e
-     puts e.message
-    rescue Interrupt => _
-      close_queue
-    ensure
-      close_queue
-    end
-  end
 
   def close_queue
     @ch.close if @ch
